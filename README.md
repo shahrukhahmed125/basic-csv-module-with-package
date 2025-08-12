@@ -75,7 +75,8 @@
         {
             public function showForm()
             {
-                return view('posts.csv');
+                $posts = Post::all();
+                return view('posts.csv', compact('posts'));
             }
         
             public function import(Request $request)
