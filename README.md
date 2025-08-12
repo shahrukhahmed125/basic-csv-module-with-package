@@ -1,61 +1,136 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Laravel CSV Import/Export using Maatwebsite/Excel
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+## 1. Install maatwebsite/excel
+    composer require maatwebsite/excel
+        
+## 2. Create the posts table migration
 
-## About Laravel
+    php artisan make:model Post -m
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+    public function up(): void
+    {
+        Schema::create('posts', function (Blueprint $table) {
+            $table->id();
+            $table->string('title');
+            $table->text('description');
+            $table->timestamps();
+        });
+    }
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+    class Post extends Model
+    {
+        protected $fillable = ['title', 'description'];
+    }
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+   php artisan migrate
 
-## Learning Laravel
+## 4. Create Import Class
+    php artisan make:import PostsImport --model=Post
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+    namespace App\Imports;
+    
+    use App\Models\Post;
+    use Maatwebsite\Excel\Concerns\ToModel;
+    use Maatwebsite\Excel\Concerns\WithHeadingRow;
+    
+    class PostsImport implements ToModel, WithHeadingRow
+    {
+        public function model(array $row)
+        {
+            return new Post([
+                'title'       => $row['title'],
+                'description' => $row['description'],
+            ]);
+        }
+    }
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+## 4.5.  Create Export Class (Optional)
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+php artisan make:export PostsExport --model=Post
 
-## Laravel Sponsors
+    namespace App\Exports;
+    
+    use App\Models\Post;
+    use Maatwebsite\Excel\Concerns\FromCollection;
+    use Maatwebsite\Excel\Concerns\WithHeadings;
+    
+    class PostsExport implements FromCollection, WithHeadings
+    {
+        public function collection()
+        {
+            return Post::select('title', 'description')->get();
+        }
+    
+        public function headings(): array
+        {
+            return ['title', 'description'];
+        }
+    }
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
 
-### Premium Partners
+## 5.  Create Controller
+      php artisan make:controller PostCsvController
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+        class PostCsvController extends Controller
+        {
+            public function showForm()
+            {
+                return view('posts.csv');
+            }
+        
+            public function import(Request $request)
+            {
+                $request->validate([
+                    'csv_file' => 'required|mimes:csv,txt'
+                ]);
+        
+                Excel::import(new PostsImport, $request->file('csv_file'));
+        
+                return back()->with('success', 'Posts imported successfully.');
+            }
+        
+            public function export() // optional 
+            {
+                return Excel::download(new PostsExport, 'posts.csv');
+            }
+        }
 
-## Contributing
+## 6. Create Blade View
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>CSV Import/Export</title>
+        </head>
+        <body>
+            @if(session('success'))
+                <p style="color: green">{{ session('success') }}</p>
+            @endif
+        
+            <h3>Import CSV</h3>
+            <form action="{{ route('posts.import') }}" method="POST" enctype="multipart/form-data">
+                @csrf
+                <input type="file" name="csv_file" accept=".csv">
+                <button type="submit">Import</button>
+            </form>
+        
+            <h3>Export CSV</h3>
+            <a href="{{ route('posts.export') }}">Download CSV</a>
+        </body>
+        </html>
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## 7. Add Routes
+    use App\Http\Controllers\PostCsvController;
+    
+    Route::get('posts/csv', [PostCsvController::class, 'showForm'])->name('posts.csv.form');
+    Route::post('posts/import', [PostCsvController::class, 'import'])->name('posts.import');
+    Route::get('posts/export', [PostCsvController::class, 'export'])->name('posts.export');
 
-## Code of Conduct
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
 
-## Security Vulnerabilities
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
 
-## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+
+
+
