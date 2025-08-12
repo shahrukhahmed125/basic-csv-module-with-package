@@ -38,8 +38,8 @@
         public function model(array $row)
         {
             return new Post([
-                'title'       => $row['title'],
-                'description' => $row['description'],
+                'title'       => $row[0],
+                'description' => $row[1],
             ]);
         }
     }
