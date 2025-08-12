@@ -22,7 +22,7 @@
         protected $fillable = ['title', 'description'];
     }
 
-   php artisan migrate
+    php artisan migrate
 
 ## 4. Create Import Class
     php artisan make:import PostsImport --model=Post
@@ -46,7 +46,7 @@
 
 ## 4.5.  Create Export Class (Optional)
 
-php artisan make:export PostsExport --model=Post
+    php artisan make:export PostsExport --model=Post
 
     namespace App\Exports;
     
